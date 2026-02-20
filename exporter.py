@@ -142,14 +142,13 @@ def parse_metrics(data: dict) -> dict:
             "upload_latency_jitter_ms":     data["upload"]["latency"]["jitter"],
             # Packet loss
             "packet_loss":                  data.get("packetLoss"),  # None if not present
-            # Labels for measurement metrics
-            "server_name":                  data["server"]["name"],
-            "server_location":              data["server"]["location"],
-            "isp":                          data["isp"],
             # Info metric fields
             "server_id":                    str(data["server"]["id"]),
             "server_host":                  data["server"]["host"],
+            "server_name":                  data["server"]["name"],
+            "server_location":              data["server"]["location"],
             "server_country":               data["server"]["country"],
+            "isp":                          data["isp"],
             "external_ip":                  data["interface"]["externalIp"],
             # Metadata
             "timestamp":                    time.time(),
@@ -230,11 +229,6 @@ class SpeedtestCollector:
         if not success:
             return
 
-        labels     = ["server_name", "server_location", "isp"]
-        label_vals = [m.get("server_name", "unknown"),
-                      m.get("server_location", "unknown"),
-                      m.get("isp", "unknown")]
-
         # ── Numeric metrics ───────────────────────────────────────────────────
         specs = [
             # Ping
@@ -258,28 +252,28 @@ class SpeedtestCollector:
             ("speedtest_upload_latency_jitter_ms",     "Upload latency jitter in milliseconds",         "upload_latency_jitter_ms"),
         ]
         for name, help_text, key in specs:
-            g = GaugeMetricFamily(name, help_text, labels=labels)
-            g.add_metric(label_vals, m[key])
+            g = GaugeMetricFamily(name, help_text)
+            g.add_metric([], m[key])
             yield g
 
         # packet_loss is only emitted when the server reports it
         if m.get("packet_loss") is not None:
-            g = GaugeMetricFamily("speedtest_packet_loss", "Packet loss percentage",
-                                  labels=labels)
-            g.add_metric(label_vals, m["packet_loss"])
+            g = GaugeMetricFamily("speedtest_packet_loss", "Packet loss percentage")
+            g.add_metric([], m["packet_loss"])
             yield g
 
         # ── Info metric ───────────────────────────────────────────────────────
-        # Carries string-valued fields not suitable as numeric metrics.
-        info_labels     = ["server_id", "server_host", "server_name", "server_location", "server_country", "external_ip"]
+        # Carries all string-valued identifier fields as labels.
+        info_labels     = ["server_id", "server_host", "server_name", "server_location", "server_country", "isp", "external_ip"]
         info_label_vals = [m.get("server_id", "unknown"),
                            m.get("server_host", "unknown"),
                            m.get("server_name", "unknown"),
                            m.get("server_location", "unknown"),
                            m.get("server_country", "unknown"),
+                           m.get("isp", "unknown"),
                            m.get("external_ip", "unknown")]
         g = GaugeMetricFamily("speedtest_info",
-                              "Speedtest result metadata (server_id, server_host, server_name, server_location, server_country, external_ip)",
+                              "Speedtest result metadata (server_id, server_host, server_name, server_location, server_country, isp, external_ip)",
                               labels=info_labels)
         g.add_metric(info_label_vals, 1.0)
         yield g
