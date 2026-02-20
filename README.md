@@ -80,7 +80,7 @@ Metrics marked with * include the labels `server_name`, `server_location`, and `
 | `speedtest_upload_latency_high_ms` * | Gauge | Upload latency high in milliseconds |
 | `speedtest_upload_latency_jitter_ms` * | Gauge | Upload latency jitter in milliseconds |
 | `speedtest_packet_loss` * | Gauge | Packet loss percentage (only emitted when reported by the test server) |
-| `speedtest_info` | Gauge | Always `1.0` — carries `server_id`, `server_country`, and `external_ip` as labels |
+| `speedtest_info` | Gauge | Always `1.0` — carries `server_id`, `server_host`, `server_name`, `server_location`, `server_country`, and `external_ip` as labels |
 
 ### Example output
 ```

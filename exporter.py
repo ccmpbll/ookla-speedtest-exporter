@@ -148,6 +148,7 @@ def parse_metrics(data: dict) -> dict:
             "isp":                          data["isp"],
             # Info metric fields
             "server_id":                    str(data["server"]["id"]),
+            "server_host":                  data["server"]["host"],
             "server_country":               data["server"]["country"],
             "external_ip":                  data["interface"]["externalIp"],
             # Metadata
@@ -270,12 +271,15 @@ class SpeedtestCollector:
 
         # ── Info metric ───────────────────────────────────────────────────────
         # Carries string-valued fields not suitable as numeric metrics.
-        info_labels     = ["server_id", "server_country", "external_ip"]
+        info_labels     = ["server_id", "server_host", "server_name", "server_location", "server_country", "external_ip"]
         info_label_vals = [m.get("server_id", "unknown"),
+                           m.get("server_host", "unknown"),
+                           m.get("server_name", "unknown"),
+                           m.get("server_location", "unknown"),
                            m.get("server_country", "unknown"),
                            m.get("external_ip", "unknown")]
         g = GaugeMetricFamily("speedtest_info",
-                              "Speedtest result metadata (server_id, server_country, external_ip)",
+                              "Speedtest result metadata (server_id, server_host, server_name, server_location, server_country, external_ip)",
                               labels=info_labels)
         g.add_metric(info_label_vals, 1.0)
         yield g
