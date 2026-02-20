@@ -79,19 +79,3 @@ scrape_configs:
 | `speedtest_upload_latency_jitter_ms` | Gauge | Upload latency jitter in milliseconds |
 | `speedtest_packet_loss` | Gauge | Packet loss percentage (only emitted when reported by the test server) |
 | `speedtest_info` | Gauge | Always `1.0` — carries `server_id`, `server_host`, `server_name`, `server_location`, `server_country`, `isp`, and `external_ip` as labels |
-
-### Example output
-```
-# HELP speedtest_scrape_success 1 if the last speedtest run succeeded, 0 if it failed
-# TYPE speedtest_scrape_success gauge
-speedtest_scrape_success 1.0
-# HELP speedtest_last_run_timestamp Unix timestamp of the last speedtest run
-# TYPE speedtest_last_run_timestamp gauge
-speedtest_last_run_timestamp 1.708123456e+09
-# HELP speedtest_download_bandwidth_mbps Download bandwidth in Mbps
-# TYPE speedtest_download_bandwidth_mbps gauge
-speedtest_download_bandwidth_mbps{isp="Comcast",server_location="Chicago, IL",server_name="Speedtest Chicago"} 452.34
-# HELP speedtest_upload_bandwidth_mbps Upload bandwidth in Mbps
-# TYPE speedtest_upload_bandwidth_mbps gauge
-speedtest_upload_bandwidth_mbps{isp="Comcast",server_location="Chicago, IL",server_name="Speedtest Chicago"} 23.11
-```
