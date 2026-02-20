@@ -57,19 +57,32 @@ scrape_configs:
 
 ## Exposed Metrics
 
-All measurement metrics include the labels `server_name`, `server_location`, and `isp`.
+Metrics marked with * include the labels `server_name`, `server_location`, and `isp`.
 
 | Metric | Type | Description |
 |---|---|---|
-| `speedtest_download_bandwidth_mbps` | Gauge | Download speed in Mbps |
-| `speedtest_upload_bandwidth_mbps` | Gauge | Upload speed in Mbps |
-| `speedtest_ping_latency_ms` | Gauge | Ping latency in milliseconds |
-| `speedtest_ping_jitter_ms` | Gauge | Ping jitter in milliseconds |
-| `speedtest_download_latency_ms` | Gauge | Download latency IQM in milliseconds |
-| `speedtest_upload_latency_ms` | Gauge | Upload latency IQM in milliseconds |
-| `speedtest_packet_loss` | Gauge | Packet loss percentage (only emitted when reported by the test server) |
-| `speedtest_last_run_timestamp` | Gauge | Unix timestamp of the last speedtest run |
 | `speedtest_scrape_success` | Gauge | `1` if the last run succeeded, `0` if it failed |
+| `speedtest_last_run_timestamp` | Gauge | Unix timestamp of the last speedtest run |
+| `speedtest_ping_latency_ms` * | Gauge | Ping latency in milliseconds |
+| `speedtest_ping_jitter_ms` * | Gauge | Ping jitter in milliseconds |
+| `speedtest_ping_low_ms` * | Gauge | Ping low in milliseconds |
+| `speedtest_ping_high_ms` * | Gauge | Ping high in milliseconds |
+| `speedtest_download_bandwidth_mbps` * | Gauge | Download bandwidth in Mbps |
+| `speedtest_download_bytes` * | Gauge | Total bytes received during download test |
+| `speedtest_download_elapsed_ms` * | Gauge | Download test duration in milliseconds |
+| `speedtest_download_latency_iqm_ms` * | Gauge | Download latency IQM in milliseconds |
+| `speedtest_download_latency_low_ms` * | Gauge | Download latency low in milliseconds |
+| `speedtest_download_latency_high_ms` * | Gauge | Download latency high in milliseconds |
+| `speedtest_download_latency_jitter_ms` * | Gauge | Download latency jitter in milliseconds |
+| `speedtest_upload_bandwidth_mbps` * | Gauge | Upload bandwidth in Mbps |
+| `speedtest_upload_bytes` * | Gauge | Total bytes sent during upload test |
+| `speedtest_upload_elapsed_ms` * | Gauge | Upload test duration in milliseconds |
+| `speedtest_upload_latency_iqm_ms` * | Gauge | Upload latency IQM in milliseconds |
+| `speedtest_upload_latency_low_ms` * | Gauge | Upload latency low in milliseconds |
+| `speedtest_upload_latency_high_ms` * | Gauge | Upload latency high in milliseconds |
+| `speedtest_upload_latency_jitter_ms` * | Gauge | Upload latency jitter in milliseconds |
+| `speedtest_packet_loss` * | Gauge | Packet loss percentage (only emitted when reported by the test server) |
+| `speedtest_info` | Gauge | Always `1.0` — carries `server_id`, `server_country`, and `external_ip` as labels |
 
 ### Example output
 ```

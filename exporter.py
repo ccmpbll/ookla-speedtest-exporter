@@ -121,18 +121,40 @@ def parse_metrics(data: dict) -> dict:
 
     try:
         return {
-            "download_mbps":        to_mbps(data["download"]["bandwidth"]),
-            "upload_mbps":          to_mbps(data["upload"]["bandwidth"]),
-            "ping_latency_ms":      data["ping"]["latency"],
-            "ping_jitter_ms":       data["ping"]["jitter"],
-            "download_latency_ms":  data["download"]["latency"]["iqm"],
-            "upload_latency_ms":    data["upload"]["latency"]["iqm"],
-            "packet_loss":          data.get("packetLoss"),  # None if not present
-            "server_name":          data["server"]["name"],
-            "server_location":      data["server"]["location"],
-            "isp":                  data["isp"],
-            "timestamp":            time.time(),
-            "success":              1.0,
+            # Ping
+            "ping_latency_ms":              data["ping"]["latency"],
+            "ping_jitter_ms":               data["ping"]["jitter"],
+            "ping_low_ms":                  data["ping"]["low"],
+            "ping_high_ms":                 data["ping"]["high"],
+            # Download
+            "download_mbps":                to_mbps(data["download"]["bandwidth"]),
+            "download_bytes":               data["download"]["bytes"],
+            "download_elapsed_ms":          data["download"]["elapsed"],
+            "download_latency_iqm_ms":      data["download"]["latency"]["iqm"],
+            "download_latency_low_ms":      data["download"]["latency"]["low"],
+            "download_latency_high_ms":     data["download"]["latency"]["high"],
+            "download_latency_jitter_ms":   data["download"]["latency"]["jitter"],
+            # Upload
+            "upload_mbps":                  to_mbps(data["upload"]["bandwidth"]),
+            "upload_bytes":                 data["upload"]["bytes"],
+            "upload_elapsed_ms":            data["upload"]["elapsed"],
+            "upload_latency_iqm_ms":        data["upload"]["latency"]["iqm"],
+            "upload_latency_low_ms":        data["upload"]["latency"]["low"],
+            "upload_latency_high_ms":       data["upload"]["latency"]["high"],
+            "upload_latency_jitter_ms":     data["upload"]["latency"]["jitter"],
+            # Packet loss
+            "packet_loss":                  data.get("packetLoss"),  # None if not present
+            # Labels for measurement metrics
+            "server_name":                  data["server"]["name"],
+            "server_location":              data["server"]["location"],
+            "isp":                          data["isp"],
+            # Info metric fields
+            "server_id":                    str(data["server"]["id"]),
+            "server_country":               data["server"]["country"],
+            "external_ip":                  data["interface"]["externalIp"],
+            # Metadata
+            "timestamp":                    time.time(),
+            "success":                      1.0,
         }
     except (KeyError, TypeError) as exc:
         log.error("Failed to parse metrics from speedtest data: %s", exc)
@@ -214,13 +236,29 @@ class SpeedtestCollector:
                       m.get("server_location", "unknown"),
                       m.get("isp", "unknown")]
 
+        # ── Numeric metrics ───────────────────────────────────────────────────
         specs = [
-            ("speedtest_download_bandwidth_mbps", "Download bandwidth in Mbps",           "download_mbps"),
-            ("speedtest_upload_bandwidth_mbps",   "Upload bandwidth in Mbps",             "upload_mbps"),
-            ("speedtest_ping_latency_ms",         "Ping latency in milliseconds",         "ping_latency_ms"),
-            ("speedtest_ping_jitter_ms",          "Ping jitter in milliseconds",          "ping_jitter_ms"),
-            ("speedtest_download_latency_ms",     "Download latency IQM in milliseconds", "download_latency_ms"),
-            ("speedtest_upload_latency_ms",       "Upload latency IQM in milliseconds",   "upload_latency_ms"),
+            # Ping
+            ("speedtest_ping_latency_ms",              "Ping latency in milliseconds",                  "ping_latency_ms"),
+            ("speedtest_ping_jitter_ms",               "Ping jitter in milliseconds",                   "ping_jitter_ms"),
+            ("speedtest_ping_low_ms",                  "Ping low in milliseconds",                      "ping_low_ms"),
+            ("speedtest_ping_high_ms",                 "Ping high in milliseconds",                     "ping_high_ms"),
+            # Download
+            ("speedtest_download_bandwidth_mbps",      "Download bandwidth in Mbps",                    "download_mbps"),
+            ("speedtest_download_bytes",               "Total bytes received during download test",      "download_bytes"),
+            ("speedtest_download_elapsed_ms",          "Download test duration in milliseconds",         "download_elapsed_ms"),
+            ("speedtest_download_latency_iqm_ms",      "Download latency IQM in milliseconds",          "download_latency_iqm_ms"),
+            ("speedtest_download_latency_low_ms",      "Download latency low in milliseconds",          "download_latency_low_ms"),
+            ("speedtest_download_latency_high_ms",     "Download latency high in milliseconds",         "download_latency_high_ms"),
+            ("speedtest_download_latency_jitter_ms",   "Download latency jitter in milliseconds",       "download_latency_jitter_ms"),
+            # Upload
+            ("speedtest_upload_bandwidth_mbps",        "Upload bandwidth in Mbps",                      "upload_mbps"),
+            ("speedtest_upload_bytes",                 "Total bytes sent during upload test",            "upload_bytes"),
+            ("speedtest_upload_elapsed_ms",            "Upload test duration in milliseconds",           "upload_elapsed_ms"),
+            ("speedtest_upload_latency_iqm_ms",        "Upload latency IQM in milliseconds",            "upload_latency_iqm_ms"),
+            ("speedtest_upload_latency_low_ms",        "Upload latency low in milliseconds",            "upload_latency_low_ms"),
+            ("speedtest_upload_latency_high_ms",       "Upload latency high in milliseconds",           "upload_latency_high_ms"),
+            ("speedtest_upload_latency_jitter_ms",     "Upload latency jitter in milliseconds",         "upload_latency_jitter_ms"),
         ]
         for name, help_text, key in specs:
             g = GaugeMetricFamily(name, help_text, labels=labels)
@@ -233,6 +271,18 @@ class SpeedtestCollector:
                                   labels=labels)
             g.add_metric(label_vals, m["packet_loss"])
             yield g
+
+        # ── Info metric ───────────────────────────────────────────────────────
+        # Carries string-valued fields not suitable as numeric metrics.
+        info_labels     = ["server_id", "server_country", "external_ip"]
+        info_label_vals = [m.get("server_id", "unknown"),
+                           m.get("server_country", "unknown"),
+                           m.get("external_ip", "unknown")]
+        g = GaugeMetricFamily("speedtest_info",
+                              "Speedtest result metadata (server_id, server_country, external_ip)",
+                              labels=info_labels)
+        g.add_metric(info_label_vals, 1.0)
+        yield g
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
