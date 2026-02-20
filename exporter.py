@@ -159,8 +159,9 @@ def parse_metrics(data: dict) -> dict:
 
 # Lock and shared result for on_demand mode — ensures only one speedtest runs
 # at a time. Concurrent scrapes block until the in-progress test finishes,
-# then all return the same result.
-_speedtest_lock   = threading.Lock()
+# then all return the same result without triggering another run.
+_speedtest_lock    = threading.Lock()
+_speedtest_running = False   # True while a test is actively in progress
 _last_result: dict | None = None
 
 
@@ -180,24 +181,35 @@ class SpeedtestCollector:
         yield from self._build_metric_families(metrics)
 
     def _collect_on_demand(self) -> dict:
-        global _last_result
+        global _last_result, _speedtest_running
 
-        if _speedtest_lock.locked():
+        was_waiting = _speedtest_running
+        if was_waiting:
             log.info("Scrape requested while a speedtest is already in progress — waiting for it to finish...")
 
         with _speedtest_lock:
+            # If we were waiting and a result is now available, return it
+            # directly rather than kicking off another speedtest.
+            if was_waiting and _last_result is not None:
+                log.info("Returning result from completed speedtest to queued scrape.")
+                return _last_result
+
+            _speedtest_running = True
             log.info("Prometheus scrape received — running speedtest now...")
-            data = run_speedtest()
-            if data is None:
-                log.error("Speedtest failed — returning scrape_success=0.")
-                _last_result = {"success": 0.0, "timestamp": time.time()}
-            else:
-                _last_result = parse_metrics(data)
-                if not _last_result:
-                    log.error("Metric parsing failed — returning scrape_success=0.")
+            try:
+                data = run_speedtest()
+                if data is None:
+                    log.error("Speedtest failed — returning scrape_success=0.")
                     _last_result = {"success": 0.0, "timestamp": time.time()}
                 else:
-                    log.info("Metrics parsed successfully — serving to Prometheus.")
+                    _last_result = parse_metrics(data)
+                    if not _last_result:
+                        log.error("Metric parsing failed — returning scrape_success=0.")
+                        _last_result = {"success": 0.0, "timestamp": time.time()}
+                    else:
+                        log.info("Metrics parsed successfully — serving to Prometheus.")
+            finally:
+                _speedtest_running = False
             return _last_result
 
     def _collect_cached(self) -> dict:
