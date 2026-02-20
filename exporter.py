@@ -34,6 +34,7 @@ PORT         = 9142
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
     stream=sys.stdout,
 )
 log = logging.getLogger(__name__)
@@ -54,9 +55,16 @@ def run_speedtest() -> dict | None:
         log.info("First run detected — accepting Ookla license and GDPR automatically.")
     if SERVER_ID:
         cmd.append(f"--server-id={SERVER_ID}")
+        log.info("Using specified server ID: %s", SERVER_ID)
+    else:
+        log.info("No SERVER_ID specified — Ookla will auto-select the best server.")
+
+    log.info("Starting speedtest...")
+    start_time = time.time()
 
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        elapsed = time.time() - start_time
         raw = result.stdout
 
         if first_run:
@@ -71,9 +79,27 @@ def run_speedtest() -> dict | None:
                 return None
             raw = raw[json_start:]
             FIRST_START.touch()
-            log.info("First run complete. License and GDPR accepted.")
+            log.info("First run complete. Ookla license and GDPR accepted.")
 
         data = json.loads(raw)
+
+        log.info("Speedtest complete in %.1fs.", elapsed)
+        log.info(
+            "Server: %s (%s) | ISP: %s",
+            data.get("server", {}).get("name", "unknown"),
+            data.get("server", {}).get("location", "unknown"),
+            data.get("isp", "unknown"),
+        )
+        log.info(
+            "Results: Download=%.2f Mbps | Upload=%.2f Mbps | Ping=%.2f ms | Jitter=%.2f ms",
+            (data["download"]["bandwidth"] * 8) / 1_000_000,
+            (data["upload"]["bandwidth"] * 8) / 1_000_000,
+            data["ping"]["latency"],
+            data["ping"]["jitter"],
+        )
+        if "packetLoss" in data:
+            log.info("Packet loss: %.2f%%", data["packetLoss"])
+
         return data
 
     except subprocess.TimeoutExpired:
@@ -156,20 +182,27 @@ class SpeedtestCollector:
     def _collect_on_demand(self) -> dict:
         global _last_result
 
+        if _speedtest_lock.locked():
+            log.info("Scrape requested while a speedtest is already in progress — waiting for it to finish...")
+
         with _speedtest_lock:
-            log.info("on_demand scrape: running speedtest...")
+            log.info("Prometheus scrape received — running speedtest now...")
             data = run_speedtest()
             if data is None:
+                log.error("Speedtest failed — returning scrape_success=0.")
                 _last_result = {"success": 0.0, "timestamp": time.time()}
             else:
                 _last_result = parse_metrics(data)
                 if not _last_result:
+                    log.error("Metric parsing failed — returning scrape_success=0.")
                     _last_result = {"success": 0.0, "timestamp": time.time()}
+                else:
+                    log.info("Metrics parsed successfully — serving to Prometheus.")
             return _last_result
 
     def _collect_cached(self) -> dict:
         if not CACHE_PATH.exists():
-            log.warning("Cache file does not exist yet — no data available.")
+            log.warning("Cache file does not exist yet — no results available. Waiting for first cron run.")
             return {"success": 0.0, "timestamp": 0.0}
 
         try:
@@ -179,6 +212,7 @@ class SpeedtestCollector:
                     data = json.load(f)
                 finally:
                     fcntl.flock(f, fcntl.LOCK_UN)
+            log.info("Serving cached results to Prometheus.")
             return parse_metrics(data)
         except (json.JSONDecodeError, OSError) as exc:
             log.error("Failed to read cache file: %s", exc)
@@ -235,13 +269,13 @@ def run_once() -> None:
     Run a single speedtest, update the cache, and exit.
     Used by cron in cached mode via: python3 exporter.py --run-once
     """
-    log.info("--run-once: running speedtest and updating cache...")
+    log.info("run-once: triggered by cron — running speedtest and updating cache...")
     data = run_speedtest()
     if data is None:
-        log.error("--run-once: speedtest failed, cache not updated.")
+        log.error("run-once: speedtest failed — cache not updated.")
         sys.exit(1)
     write_cache(data)
-    log.info("--run-once: done.")
+    log.info("run-once: cache updated successfully — exiting.")
 
 
 def serve() -> None:
@@ -271,6 +305,10 @@ def serve() -> None:
 
     start_http_server(PORT)
     log.info("Prometheus exporter listening on :%d (mode: %s)", PORT, SCRAPE_MODE)
+    if SCRAPE_MODE == "on_demand":
+        log.info("on_demand mode: each Prometheus scrape will trigger a live speedtest (~20-40s).")
+    else:
+        log.info("cached mode: serving results from cache. Cron job updates cache on schedule.")
 
     while True:
         time.sleep(10)

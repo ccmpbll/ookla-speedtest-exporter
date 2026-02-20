@@ -39,6 +39,7 @@ Use this mode when you want fast scrape responses or need to decouple the test s
 ### `on_demand` mode
 ```bash
 docker run -d \
+  --name ookla-speedtest-exporter \
   -e SCRAPE_MODE=on_demand \
   -e TZ=America/New_York \
   -p 9142:9142 \
@@ -48,6 +49,7 @@ docker run -d \
 ### `cached` mode (hourly)
 ```bash
 docker run -d \
+  --name ookla-speedtest-exporter \
   -e SCRAPE_MODE=cached \
   -e CRON='0 * * * *' \
   -e TZ=America/New_York \
