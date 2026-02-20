@@ -3,23 +3,7 @@
 
 A Prometheus exporter that runs [Ookla's Speedtest CLI](https://www.speedtest.net/apps/cli) and exposes the results as Prometheus metrics on port `9142`.
 
-Supports two scrape modes:
-- **`on_demand`** (default) — runs a live speedtest on each Prometheus scrape
-- **`cached`** — runs speedtest on a cron schedule and serves cached results instantly
-
----
-
-## Scrape Modes
-
-### `on_demand` (default)
-Prometheus scrapes `/metrics` → speedtest runs live → results returned immediately.
-
-Simple to set up, no cron needed. Because a speedtest takes 20–40 seconds, you **must** set `scrape_timeout` in your Prometheus config (see example below). The exporter ensures only one speedtest runs at a time — concurrent scrapes block and share the result.
-
-### `cached`
-A cron job runs the speedtest in the background on a schedule you define. Prometheus scrapes are served instantly from the cached result.
-
-Use this mode when you want fast scrape responses or need to decouple the test schedule from Prometheus. Requires the `CRON` environment variable.
+Each Prometheus scrape triggers a live speedtest (~20-40 seconds). Because of this, you **must** set `scrape_timeout` in your Prometheus config (see example below). The exporter ensures only one speedtest runs at a time — concurrent scrapes block and share the result.
 
 ---
 
@@ -27,31 +11,16 @@ Use this mode when you want fast scrape responses or need to decouple the test s
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `SCRAPE_MODE` | No | `on_demand` | `on_demand` or `cached` |
 | `TZ` | No | system default | Timezone in tz database format, e.g. `America/New_York` |
 | `SERVER_ID` | No | auto-select | Ookla server numeric ID to force a specific test server |
-| `CRON` | cached mode only | `0 * * * *` | Cron schedule expression for background test runs |
 
 ---
 
 ## Quick Start
 
-### `on_demand` mode
 ```bash
 docker run -d \
   --name ookla-speedtest-exporter \
-  -e SCRAPE_MODE=on_demand \
-  -e TZ=America/New_York \
-  -p 9142:9142 \
-  ccmpbll/ookla-speedtest-exporter:latest
-```
-
-### `cached` mode (hourly)
-```bash
-docker run -d \
-  --name ookla-speedtest-exporter \
-  -e SCRAPE_MODE=cached \
-  -e CRON='0 * * * *' \
   -e TZ=America/New_York \
   -p 9142:9142 \
   ccmpbll/ookla-speedtest-exporter:latest
@@ -63,7 +32,6 @@ services:
   speedtest-exporter:
     image: ccmpbll/ookla-speedtest-exporter:latest
     environment:
-      - SCRAPE_MODE=on_demand
       - TZ=America/New_York
     ports:
       - "9142:9142"
@@ -79,13 +47,11 @@ scrape_configs:
   - job_name: 'speedtest'
     static_configs:
       - targets: ['speedtest-exporter:9142']
-    # Required for on_demand mode — speedtest takes 20-40 seconds
+    # Required — speedtest takes 20-40 seconds
     scrape_timeout: 60s
-    # Set scrape_interval to control how often tests run in on_demand mode
-    scrape_interval: 5m
+    # Controls how often tests run
+    scrape_interval: 1h
 ```
-
-> **Note:** In `cached` mode the scrape completes instantly, so the default `scrape_timeout` of 10s is fine. The `CRON` expression controls test frequency instead.
 
 ---
 

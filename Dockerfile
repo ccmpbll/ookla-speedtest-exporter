@@ -4,13 +4,11 @@ LABEL maintainer="Chris Campbell"
 
 ARG SPEEDTEST_CLI_VERSION="1.2.0"
 ENV TZ=
-ENV SCRAPE_MODE=on_demand
-ENV CRON=
 ENV SERVER_ID=
 
 RUN apt-get update \
  && apt-get upgrade -y \
- && apt-get install -y --no-install-recommends tzdata bash cron curl python3 python3-pip \
+ && apt-get install -y --no-install-recommends tzdata bash curl python3 python3-pip \
  && pip3 install --no-cache-dir prometheus_client --break-system-packages \
  && apt-get purge -y python3-pip \
  && apt-get autoremove -y \

@@ -3,12 +3,9 @@
 ookla-speedtest-exporter
 Prometheus metrics exporter for Ookla Speedtest CLI.
 
-Usage:
-  exporter.py            Start the HTTP metrics server (on_demand or cached mode)
-  exporter.py --run-once Run one speedtest, update the cache file, then exit (cached mode / cron)
+Each Prometheus scrape triggers a live speedtest and returns the results.
 """
 
-import fcntl
 import json
 import logging
 import os
@@ -24,12 +21,9 @@ from prometheus_client.core import GaugeMetricFamily
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-SCRAPE_MODE  = os.environ.get("SCRAPE_MODE", "on_demand").strip().lower()
-SERVER_ID    = os.environ.get("SERVER_ID", "").strip()
-CACHE_PATH   = Path("/tmp/speedtest_cache.json")
-CACHE_TMP    = Path("/tmp/speedtest_cache.json.tmp")
-FIRST_START  = Path("/first_start")
-PORT         = 9142
+SERVER_ID   = os.environ.get("SERVER_ID", "").strip()
+FIRST_START = Path("/first_start")
+PORT        = 9142
 
 logging.basicConfig(
     level=logging.INFO,
@@ -107,21 +101,11 @@ def run_speedtest() -> dict | None:
         return None
     except json.JSONDecodeError as exc:
         log.error("Failed to parse speedtest JSON: %s", exc)
-        log.error("Raw output: %s", raw[:500] if "raw" in dir() else "unavailable")
+        log.error("Raw output: %s", raw[:500] if "raw" in locals() else "unavailable")
         return None
     except Exception as exc:
         log.error("Unexpected error running speedtest: %s", exc)
         return None
-
-
-def write_cache(data: dict) -> None:
-    """
-    Atomically write speedtest JSON to the cache file.
-    Writes to a temp file first, then renames (rename is atomic on Linux).
-    """
-    CACHE_TMP.write_text(json.dumps(data))
-    os.rename(CACHE_TMP, CACHE_PATH)
-    log.info("Cache updated: %s", CACHE_PATH)
 
 
 # ── Metrics parsing ───────────────────────────────────────────────────────────
@@ -157,8 +141,8 @@ def parse_metrics(data: dict) -> dict:
 
 # ── Prometheus collector ──────────────────────────────────────────────────────
 
-# Lock and shared result for on_demand mode — ensures only one speedtest runs
-# at a time. Concurrent scrapes block until the in-progress test finishes,
+# Lock and shared result — ensures only one speedtest runs at a time.
+# Concurrent scrapes block until the in-progress test finishes,
 # then all return the same result without triggering another run.
 _speedtest_lock    = threading.Lock()
 _speedtest_running = False   # True while a test is actively in progress
@@ -168,19 +152,14 @@ _last_result: dict | None = None
 class SpeedtestCollector:
     """
     Custom Prometheus collector.
-    on_demand mode: runs a live speedtest on each collect() call.
-    cached mode:    reads from the cache file on each collect() call.
+    Each scrape triggers a live speedtest. Concurrent scrapes block and
+    share the result of the in-progress test.
     """
 
     def collect(self):
-        if SCRAPE_MODE == "cached":
-            metrics = self._collect_cached()
-        else:
-            metrics = self._collect_on_demand()
+        yield from self._build_metric_families(self._collect())
 
-        yield from self._build_metric_families(metrics)
-
-    def _collect_on_demand(self) -> dict:
+    def _collect(self) -> dict:
         global _last_result, _speedtest_running
 
         was_waiting = _speedtest_running
@@ -212,24 +191,6 @@ class SpeedtestCollector:
                 _speedtest_running = False
             return _last_result
 
-    def _collect_cached(self) -> dict:
-        if not CACHE_PATH.exists():
-            log.warning("Cache file does not exist yet — no results available. Waiting for first cron run.")
-            return {"success": 0.0, "timestamp": 0.0}
-
-        try:
-            with open(CACHE_PATH, "r") as f:
-                fcntl.flock(f, fcntl.LOCK_SH)
-                try:
-                    data = json.load(f)
-                finally:
-                    fcntl.flock(f, fcntl.LOCK_UN)
-            log.info("Serving cached results to Prometheus.")
-            return parse_metrics(data)
-        except (json.JSONDecodeError, OSError) as exc:
-            log.error("Failed to read cache file: %s", exc)
-            return {"success": 0.0, "timestamp": 0.0}
-
     @staticmethod
     def _build_metric_families(m: dict):
         success = m.get("success", 0.0)
@@ -248,18 +209,18 @@ class SpeedtestCollector:
         if not success:
             return
 
-        labels      = ["server_name", "server_location", "isp"]
-        label_vals  = [m.get("server_name", "unknown"),
-                       m.get("server_location", "unknown"),
-                       m.get("isp", "unknown")]
+        labels     = ["server_name", "server_location", "isp"]
+        label_vals = [m.get("server_name", "unknown"),
+                      m.get("server_location", "unknown"),
+                      m.get("isp", "unknown")]
 
         specs = [
-            ("speedtest_download_bandwidth_mbps", "Download bandwidth in Mbps",          "download_mbps"),
-            ("speedtest_upload_bandwidth_mbps",   "Upload bandwidth in Mbps",            "upload_mbps"),
-            ("speedtest_ping_latency_ms",         "Ping latency in milliseconds",        "ping_latency_ms"),
-            ("speedtest_ping_jitter_ms",          "Ping jitter in milliseconds",         "ping_jitter_ms"),
-            ("speedtest_download_latency_ms",     "Download latency IQM in milliseconds","download_latency_ms"),
-            ("speedtest_upload_latency_ms",       "Upload latency IQM in milliseconds",  "upload_latency_ms"),
+            ("speedtest_download_bandwidth_mbps", "Download bandwidth in Mbps",           "download_mbps"),
+            ("speedtest_upload_bandwidth_mbps",   "Upload bandwidth in Mbps",             "upload_mbps"),
+            ("speedtest_ping_latency_ms",         "Ping latency in milliseconds",         "ping_latency_ms"),
+            ("speedtest_ping_jitter_ms",          "Ping jitter in milliseconds",          "ping_jitter_ms"),
+            ("speedtest_download_latency_ms",     "Download latency IQM in milliseconds", "download_latency_ms"),
+            ("speedtest_upload_latency_ms",       "Upload latency IQM in milliseconds",   "upload_latency_ms"),
         ]
         for name, help_text, key in specs:
             g = GaugeMetricFamily(name, help_text, labels=labels)
@@ -274,30 +235,9 @@ class SpeedtestCollector:
             yield g
 
 
-# ── Entry points ──────────────────────────────────────────────────────────────
+# ── Main ──────────────────────────────────────────────────────────────────────
 
-def run_once() -> None:
-    """
-    Run a single speedtest, update the cache, and exit.
-    Used by cron in cached mode via: python3 exporter.py --run-once
-    """
-    log.info("run-once: triggered by cron — running speedtest and updating cache...")
-    data = run_speedtest()
-    if data is None:
-        log.error("run-once: speedtest failed — cache not updated.")
-        sys.exit(1)
-    write_cache(data)
-    log.info("run-once: cache updated successfully — exiting.")
-
-
-def serve() -> None:
-    """
-    Start the Prometheus HTTP server and block indefinitely.
-    This is the foreground process that keeps the container alive.
-    """
-    if SCRAPE_MODE not in ("on_demand", "cached"):
-        log.warning("Unknown SCRAPE_MODE '%s', defaulting to on_demand.", SCRAPE_MODE)
-
+def main() -> None:
     # Remove default collectors (GC, Process, Platform) for focused output
     for collector in list(REGISTRY._names_to_collectors.values()):
         if type(collector).__name__ in ("GCCollector", "PlatformCollector", "ProcessCollector"):
@@ -316,20 +256,12 @@ def serve() -> None:
     signal.signal(signal.SIGINT, _shutdown)
 
     start_http_server(PORT)
-    log.info("Prometheus exporter listening on :%d (mode: %s)", PORT, SCRAPE_MODE)
-    if SCRAPE_MODE == "on_demand":
-        log.info("on_demand mode: each Prometheus scrape will trigger a live speedtest (~20-40s).")
-    else:
-        log.info("cached mode: serving results from cache. Cron job updates cache on schedule.")
+    log.info("Prometheus exporter listening on :%d", PORT)
+    log.info("Each Prometheus scrape will trigger a live speedtest (~20-40s).")
 
     while True:
         time.sleep(10)
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
-
 if __name__ == "__main__":
-    if "--run-once" in sys.argv:
-        run_once()
-    else:
-        serve()
+    main()
