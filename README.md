@@ -70,14 +70,12 @@ Metrics marked with * include the labels `server_name`, `server_location`, and `
 | `speedtest_download_bandwidth_mbps` * | Gauge | Download bandwidth in Mbps |
 | `speedtest_download_bytes` * | Gauge | Total bytes received during download test |
 | `speedtest_download_elapsed_ms` * | Gauge | Download test duration in milliseconds |
-| `speedtest_download_latency_iqm_ms` * | Gauge | Download latency IQM in milliseconds |
 | `speedtest_download_latency_low_ms` * | Gauge | Download latency low in milliseconds |
 | `speedtest_download_latency_high_ms` * | Gauge | Download latency high in milliseconds |
 | `speedtest_download_latency_jitter_ms` * | Gauge | Download latency jitter in milliseconds |
 | `speedtest_upload_bandwidth_mbps` * | Gauge | Upload bandwidth in Mbps |
 | `speedtest_upload_bytes` * | Gauge | Total bytes sent during upload test |
 | `speedtest_upload_elapsed_ms` * | Gauge | Upload test duration in milliseconds |
-| `speedtest_upload_latency_iqm_ms` * | Gauge | Upload latency IQM in milliseconds |
 | `speedtest_upload_latency_low_ms` * | Gauge | Upload latency low in milliseconds |
 | `speedtest_upload_latency_high_ms` * | Gauge | Upload latency high in milliseconds |
 | `speedtest_upload_latency_jitter_ms` * | Gauge | Upload latency jitter in milliseconds |
