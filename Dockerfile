@@ -28,7 +28,4 @@ COPY --chmod=755 entrypoint.sh /usr/bin/entrypoint.sh
 
 EXPOSE 9142
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -sf http://localhost:9142/metrics > /dev/null
-
 ENTRYPOINT ["entrypoint.sh"]
