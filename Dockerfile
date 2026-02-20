@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 LABEL Name=ookla-speedtest-exporter
 LABEL maintainer="Chris Campbell"
 
@@ -8,17 +8,18 @@ ENV SCRAPE_MODE=on_demand
 ENV CRON=
 ENV SERVER_ID=
 
-RUN apt update && apt full-upgrade -y
-RUN apt install -y tzdata bash cron curl wget nano python3 python3-pip
-RUN apt clean && apt autoremove -y
-
-RUN pip3 install prometheus_client --break-system-packages
-
-RUN wget https://install.speedtest.net/app/cli/ookla-speedtest-${SPEEDTEST_CLI_VERSION}-linux-x86_64.tgz -O /tmp/ookla-speedtest.tgz
-RUN tar zxvf /tmp/ookla-speedtest.tgz -C /tmp speedtest
-RUN mv /tmp/speedtest /bin/speedtest
-RUN chmod +x /bin/speedtest
-RUN rm /tmp/ookla-speedtest.tgz
+RUN apt-get update \
+ && apt-get full-upgrade -y \
+ && apt-get install -y --no-install-recommends tzdata bash cron curl python3 python3-pip \
+ && pip3 install --no-cache-dir prometheus_client --break-system-packages \
+ && curl -fsSL "https://install.speedtest.net/app/cli/ookla-speedtest-${SPEEDTEST_CLI_VERSION}-linux-x86_64.tgz" \
+      -o /tmp/ookla-speedtest.tgz \
+ && tar zxf /tmp/ookla-speedtest.tgz -C /tmp speedtest \
+ && mv /tmp/speedtest /bin/speedtest \
+ && chmod +x /bin/speedtest \
+ && rm /tmp/ookla-speedtest.tgz \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
 
 COPY exporter.py /usr/bin/exporter.py
 RUN chmod +x /usr/bin/exporter.py
@@ -27,5 +28,8 @@ COPY entrypoint.sh /usr/bin/entrypoint.sh
 RUN chmod +x /usr/bin/entrypoint.sh
 
 EXPOSE 9142
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -sf http://localhost:9142/metrics > /dev/null
 
 ENTRYPOINT ["entrypoint.sh"]
